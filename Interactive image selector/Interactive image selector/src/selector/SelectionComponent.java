@@ -1,11 +1,15 @@
 package selector;
 
-import static selector.SelectionModel.SelectionState.*;
+import static selector.SelectionModel.SelectionState.NO_SELECTION;
+import static selector.SelectionModel.SelectionState.PROCESSING;
+import static selector.SelectionModel.SelectionState.SELECTED;
+import static selector.SelectionModel.SelectionState.SELECTING;
 
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
@@ -14,7 +18,6 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.util.List;
 import javax.swing.JComponent;
-import java.awt.Rectangle;
 import scissors.ImagePathsSnapshot;
 
 /**

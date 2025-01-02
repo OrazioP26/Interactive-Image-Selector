@@ -1,11 +1,17 @@
 package selector;
 
-import static selector.SelectionModel.SelectionState.*;
+import static selector.SelectionModel.SelectionState.NO_SELECTION;
+import static selector.SelectionModel.SelectionState.PROCESSING;
+import static selector.SelectionModel.SelectionState.SELECTED;
+import static selector.SelectionModel.SelectionState.SELECTING;
 
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
-import java.awt.Point;
 import java.beans.PropertyChangeListener;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -310,6 +316,30 @@ public abstract class SelectionModel {
         ImageIO.write(dst, "png", out);
     }
 
+    public void deleteSelectedRegion() {
+        // 1. Must be in the SELECTED state
+        if (state != SelectionState.SELECTED) {
+            throw new IllegalStateException("Selection must be finished before deleting the region.");
+        }
+
+        // 2. Make a standard AWT Polygon from the PolyLine list
+        Polygon polygon = PolyLine.makePolygon(selection);
+
+        // 3. Get a Graphics2D context and fill the polygon
+        Graphics2D g2 = img.createGraphics();
+        g2.setClip(polygon);
+
+        // Example: Fill with black
+        g2.setComposite(AlphaComposite.Clear);
+        g2.fillRect(0, 0, img.getWidth(), img.getHeight());
+
+        g2.dispose();
+
+        // 4. Reset the selection so user can’t manipulate it further
+        reset();
+    }
+
+
     /* Specialization interface */
 
     /**
@@ -363,6 +393,30 @@ public abstract class SelectionModel {
             }
             propSupport.firePropertyChange("selection", null, selection());
         }
+    }
+
+    public void fillSelectionWithColor(Color color) {
+        if (state != SelectionState.SELECTED) {
+            throw new IllegalStateException("Selection must be finished before filling with a color.");
+        }
+
+        // Convert the selection (a list of PolyLine segments) into a Java AWT Polygon
+        Polygon polygon = PolyLine.makePolygon(selection);
+
+        // Get a Graphics2D object to draw on the BufferedImage
+        Graphics2D g2 = img.createGraphics();
+
+        // Restrict all drawing to the polygonal region
+        g2.setClip(polygon);
+
+        // Fill with the user-chosen color
+        g2.setColor(color);
+        g2.fillRect(0, 0, img.getWidth(), img.getHeight());
+
+        g2.dispose();
+
+        // Optionally reset the selection
+        // reset();
     }
 
     /* Observation interface */

@@ -32,7 +32,7 @@ public class ScissorsWeights {
         return List.of("CrossGradMono", "CrossGradColor");
     }
 
-    
+
     /**
      * Return the magnitude of the slope of the image intensity of `img` in band `b` perpendicular
      * to the direction `dir` from the pixel at location (`x`, `y`), multiplied by the distance to

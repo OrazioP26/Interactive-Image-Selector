@@ -1,20 +1,37 @@
 package selector;
 
-import static selector.SelectionModel.SelectionState.*;
+import static selector.SelectionModel.SelectionState.PROCESSING;
 
-import java.awt.*;
-import java.awt.event.InputEvent;
-import java.awt.event.KeyEvent;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.GridLayout;
 import java.awt.image.BufferedImage;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import javax.imageio.ImageIO;
-import javax.swing.*;
+import javax.swing.JButton;
+import javax.swing.JColorChooser;
+import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.xml.stream.StreamFilter;
-import selector.SelectionModel.SelectionState;
 import scissors.ScissorsSelectionModel;
+import selector.SelectionModel.SelectionState;
 
 /**
  * A graphical application for selecting and extracting regions of images.
@@ -39,13 +56,18 @@ public class SelectorApp implements PropertyChangeListener {
     /* Components whose state must be changed during the selection process. */
     private JMenuItem saveItem;
     private JMenuItem undoItem;
+    private JMenuItem deleteItem;
+    private JMenuItem fillItem;
+    private JMenuItem projectiveTextItem;
     private JButton cancelButton;
     private JButton undoButton;
     private JButton resetButton;
     private JButton finishButton;
+    private JButton deleteButton;
+    private JButton projectiveTextButton;
     private final JLabel statusLabel;
 
-    // New in A6
+
     /**
      * Progress bar to indicate the progress of a model that needs to do long calculations in a
      * PROCESSING state.
@@ -103,6 +125,7 @@ public class SelectorApp implements PropertyChangeListener {
     private JMenuBar makeMenuBar() {
         JMenuBar menuBar = new JMenuBar();
 
+
         // Create and populate File menu
         JMenu fileMenu = new JMenu("File");
         menuBar.add(fileMenu);
@@ -114,12 +137,23 @@ public class SelectorApp implements PropertyChangeListener {
         fileMenu.add(closeItem);
         JMenuItem exitItem = new JMenuItem("Exit");
         fileMenu.add(exitItem);
-
-        // Create and populate Edit menu
         JMenu editMenu = new JMenu("Edit");
         menuBar.add(editMenu);
+        JMenuItem deleteItem = new JMenu("Delete Selected Region");
+        editMenu.add(deleteItem);
+        projectiveTextItem = new JMenuItem("Add Perspective Text...");
+        editMenu.add(projectiveTextItem);
+        fillItem = new JMenuItem("Fill with Color...");
+        editMenu.add(fillItem);
+        fillItem.addActionListener(e -> doFillWithColor());
+
+
+        // Create and populate Edit menu
         undoItem = new JMenuItem("Undo");
         editMenu.add(undoItem);
+
+
+
 
         // Controller: Attach menu item listeners
         openItem.addActionListener(e -> openImage());
@@ -127,9 +161,74 @@ public class SelectorApp implements PropertyChangeListener {
         saveItem.addActionListener(e -> saveSelection());
         exitItem.addActionListener(e -> frame.dispose());
         undoItem.addActionListener(e -> model.undo());
-
+        projectiveTextItem.addActionListener(e -> doAddPerspectiveText());
+        deleteItem.addActionListener(e -> {
+            if (model.state() == SelectionState.SELECTED) {
+                model.deleteSelectedRegion();
+            }
+        });
         return menuBar;
     }
+
+    private void doAddPerspectiveText() {
+        if (model.state() != SelectionState.SELECTED) {
+            JOptionPane.showMessageDialog(frame,
+                    "Please finish selecting a region first.",
+                    "No selection",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        if (!(model instanceof ProjectiveTextSelectionModel)) {
+            JOptionPane.showMessageDialog(frame,
+                    "The current tool does not support projective text. Please select 'ProjectiveText' first.",
+                    "Wrong tool",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        ProjectiveTextSelectionModel projModel = (ProjectiveTextSelectionModel) model;
+
+        // Prompt user for text & color, then:
+        String userText = JOptionPane.showInputDialog(frame, "Enter text to warp:");
+        if (userText == null || userText.isEmpty()) return;
+
+        Color chosenColor = JColorChooser.showDialog(frame, "Pick text color", Color.WHITE);
+        if (chosenColor == null) chosenColor = Color.WHITE;
+
+        try {
+            projModel.addPerspectiveText(userText, chosenColor);
+            imgPanel.repaint();
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(frame,
+                    "Error adding perspective text:\n" + ex.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Called when user clicks "Fill with Color..."
+     */
+    private void doFillWithColor() {
+        // Only do something if we have a valid selection
+        if (model.state() != SelectionState.SELECTED) {
+            JOptionPane.showMessageDialog(frame,
+                    "You must finish a selection before filling it with color.",
+                    "No selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // Show color chooser dialog
+        Color chosenColor = JColorChooser.showDialog(frame, "Pick a color", Color.RED);
+        if (chosenColor != null) {
+            // Fill the region
+            model.fillSelectionWithColor(chosenColor);
+            // Possibly repaint or rely on property changes
+            imgPanel.repaint();
+        }
+    }
+
 
     /**
      * Return a panel containing buttons for controlling image selection.  Should only be called
@@ -174,8 +273,17 @@ public class SelectorApp implements PropertyChangeListener {
         p.add(finishButton);
         finishButton.addActionListener(e -> model.finishSelection());
 
-        String[] comBoxOptions = new String[]{"Point-to-point",
-                "Intelligent scissors","CrossGradColor"};
+        deleteButton = new JButton("Delete Selection");
+        p.add(deleteButton);
+        deleteButton.setEnabled(false);
+
+        projectiveTextButton = new JButton("Projective Text");
+        projectiveTextButton.setEnabled(false);
+        p.add(projectiveTextButton);
+
+        String[] comBoxOptions = new String[]{
+                "Point-to-point", "Intelligent scissors","CrossGradColor","ProjectiveText"
+        };
 
         JComboBox comBox = new JComboBox(comBoxOptions);
 
@@ -191,9 +299,20 @@ public class SelectorApp implements PropertyChangeListener {
                 newModel = new ScissorsSelectionModel("CrossGradMono", model);
             } else if (selectedModel.equals("CrossGradColor")){
                 newModel = new ScissorsSelectionModel("CrossGradColor", model);
+            } else if ((selectedModel.equals("ProjectiveText"))) {
+                newModel = new ProjectiveTextSelectionModel(true);
             }
-            setSelectionModel(newModel);}
+                    setSelectionModel(newModel);}
         );
+
+        deleteButton.addActionListener(e -> {
+            if (model.state() == SelectionState.SELECTED) {
+                model.deleteSelectedRegion();
+            }
+        });
+
+        projectiveTextButton.addActionListener(e -> doAddPerspectiveText());
+
         return p;
     }
 
@@ -247,26 +366,58 @@ public class SelectorApp implements PropertyChangeListener {
             undoButton.setEnabled(false);
             resetButton.setEnabled(false);
             finishButton.setEnabled(false);
+            if (deleteButton != null) deleteButton.setEnabled(false);
+            if (deleteItem != null) deleteItem.setEnabled(false);
+            projectiveTextButton.setEnabled(false);
+
+
         } else if (state == SelectionState.SELECTING) {
             cancelButton.setEnabled(false);
             undoButton.setEnabled(true);
             resetButton.setEnabled(true);
             finishButton.setEnabled(true);
+            if (deleteButton != null)
+                deleteButton.setEnabled(false);
+            if (deleteItem != null)
+                deleteItem.setEnabled(false);
+            projectiveTextButton.setEnabled(false);
+
+
         } else if (state == SelectionState.NO_SELECTION) {
             cancelButton.setEnabled(false);
             undoButton.setEnabled(false);
             resetButton.setEnabled(false);
             finishButton.setEnabled(false);
+            if (deleteButton != null)
+                deleteButton.setEnabled(false);
+            if (deleteItem != null)
+                deleteItem.setEnabled(false);
+            projectiveTextButton.setEnabled(false);
+
+
         } else if (state == SelectionState.SELECTED) {
             cancelButton.setEnabled(false);
             undoButton.setEnabled(true);
             resetButton.setEnabled(true);
             finishButton.setEnabled(false);
+            deleteButton.setEnabled(true);
+            if (deleteButton != null)
+                deleteButton.setEnabled(true);
+            if (deleteItem != null) deleteItem.setEnabled(true);
+            projectiveTextButton.setEnabled(model instanceof ProjectiveTextSelectionModel);
+
         } else {
             cancelButton.setEnabled(false);
             undoButton.setEnabled(false);
             resetButton.setEnabled(false);
             finishButton.setEnabled(false);
+            deleteButton.setEnabled(false);
+            if (deleteButton != null)
+                deleteButton.setEnabled(false);
+            if (deleteItem != null)
+                deleteItem.setEnabled(false);
+            projectiveTextButton.setEnabled(false);
+
         }
     }
 
